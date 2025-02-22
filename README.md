@@ -106,18 +106,32 @@ File Structure
 Protocol Version
 
 Current Version: 1.0 (specified in the version field of meta.xml)
+
 For the full protocol specification, see RFC EX5-001 (docs/rfc-ex5-001.txt).
+
 Contributing
-We welcome contributions, bug reports, and feature suggestions! Please follow these steps:
+
+We welcome contributions, bug reports, and feature suggestions! 
+Please follow these steps:
+
 Fork this repository.
+
 Create your feature branch (git checkout -b feature/xxx).
+
 Commit your changes (git commit -m 'Add new feature').
+
 Push to the branch (git push origin feature/xxx).
+
 Open a Pull Request.
+
 License
+
 This project is licensed under the MIT License (LICENSE).
+
 Contact
+
 Email: hl19863129@gmail.com
+
 GitHub Issues: File an issue
 
 ---
