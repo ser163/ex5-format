@@ -2,9 +2,9 @@
 
 **Network Working Group**
 
-Harry Liu
+- Harry Liu
 
-EX5 Team
+- EX5 Team
 
 **Request for Comments**: EX5-001
 
