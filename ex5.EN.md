@@ -15,7 +15,8 @@
 **Status of This Memo**
 
 This document specifies an informational protocol for the ex5 community. It does not specify an Internet standard of any kind. Distribution of this memo is unlimited.
-Abstract
+
+**Abstract**
 
 The .ex5 file format is a novel electronic book container designed to encapsulate book content, multimedia resources, and user interaction data such as reading progress, notes, and ratings. This specification defines Version 1.0 of the .ex5 format, leveraging ZIP archives, JSON, SQLite, and XML to enable secure storage, rich functionality, and remote synchronization. This document provides a detailed protocol for developers to implement .ex5-compliant applications.
 
@@ -77,13 +78,14 @@ The .ex5 file format is a novel electronic book container designed to encapsulat
 
 ## 1. Introduction
 
-#### 1.1 Purpose
+### 1.1 Purpose
 
 The .ex5 file format is designed to provide a robust, extensible, and user-centric solution for electronic books. It aims to:
-Store multimedia book content (text, images, audio, video).
-Track user interactions (progress, notes, ratings).
-Support secure encryption and compression.
-Enable synchronization across devices via a remote server.
+
+- Store multimedia book content (text, images, audio, video).
+- Track user interactions (progress, notes, ratings).
+- Support secure encryption and compression.
+- Enable synchronization across devices via a remote server.
 
 ### 1.2 Scope
 
@@ -98,10 +100,11 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 ### 2.1 File Structure
 
 A .ex5 file is a ZIP archive containing:
-book_data/ : Static book metadata and structure.
-resources/ : Multimedia resource files.
-read_data.db : SQLite database for user data.
-meta.xml : Protocol metadata.
+
+- `book_data/`: Static book metadata and structure.
+- `resources/`: Multimedia resource files.
+- `read_data.db`: SQLite database for user data.
+- `meta.xml`: Protocol metadata.
 
 ### 2.2 Versioning
 
@@ -111,9 +114,9 @@ This specification defines Version 1.0. The version is indicated in the meta.xml
 
 ### 3.1 Container Format
 
-Format: ZIP archive (DEFLATED compression).
-Extension: .ex5.
-Requirement: Implementations MUST support ZIP extraction and creation.
+- Format: ZIP archive (DEFLATED compression).
+- Extension: .ex5.
+- Requirement: Implementations MUST support ZIP extraction and creation.
 
 ### 3.2 book_data Directory
 
@@ -167,10 +170,10 @@ Defines resource metadata:
 ```
 
 - **Constraints:**
-  
-- 0-1000 reserved for info.json (0-100 for cover, 101-900 reserved).
-  - 901-1001000 for content resources.
-  
+  - 0-100: Cover resources (referenced by the cover_id field in info.json).
+  - 101-900: Reserved for future versions; implementations MUST NOT assign content resources in this range.
+  - 901-1001000: Content resources.
+
 ### 3.3 resources Directory
 
 Contains physical resource files (e.g., `cover.png`, `chapter1.txt`). Filenames MUST match the "content" field in resources.json.
@@ -208,6 +211,8 @@ CREATE TABLE history (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 ```
+
+**Note:** `progress` stores a textual summary of the latest reading position. A JSON-encoded object is RECOMMENDED (e.g., `{"chapter": 3, "offset": 128}`), distinguishing it from the numeric progress values in the records table.
 
 #### 3.4.3 records Table
 
@@ -252,11 +257,10 @@ CREATE TABLE notes (
 
 **Notes:**
 
-`content`: For `"txt"`, text string; otherwise, JSON array of `resource_ids`.
-
-`range_start`, `range_end`: Character offsets for highlights (optional).
-
-`original`: Highlighted text (optional).
+- `content`: For `"txt"`, text string; otherwise, JSON array of `resource_ids`.
+- `range_start`, `range_end`: Character offsets for highlights (optional).
+- `original`: Highlighted text (optional).
+- `chapter_id`: Corresponds to the chapter `index` in chapters.json (chapters are defined in JSON, not in the database, hence no foreign key).
 
 #### 3.4.5 inspiration Table
 
@@ -277,7 +281,7 @@ CREATE TABLE inspiration (
 );
 ```
 
-### 3.4.6 reviews Table
+#### 3.4.6 reviews Table
 
 ```sql
 CREATE TABLE reviews (
@@ -314,57 +318,46 @@ CREATE TABLE ratings (
 </meta>
 ```
 
-`version`: Protocol version (MUST be "1.0" for this spec).
-
-`encryption`: Encryption algorithm (RECOMMENDED: AES-256).
-
-encrypt_scope: Integer (0-7, 7 = full encryption).
+- `version`: Protocol version (MUST be "1.0" for this spec).
+- `encryption`: Encryption algorithm (RECOMMENDED: AES-256).
+- `encrypt_scope`: Integer (0-7; 7 = full encryption of everything except meta.xml; values 1-3 are reserved and undefined).
+- meta.xml MUST remain unencrypted under every encrypt_scope value (see Section 4.1).
 
 ## 4. Encryption and Compression
 
 ### 4.1 Encryption Mechanism
 
-- **Targets**: `resources/`, `read_data.db`, or entire file.
-
-- **Algorithm**: AES-256 (default).
-
-- **Scope**:
-
+- **Targets**: `resources/`, `read_data.db`, or the entire file.
+- **Algorithm**: AES-256 (default). GCM mode is RECOMMENDED for ciphertext integrity; if CBC mode is used, an HMAC MUST be appended for integrity protection.
+- **Scope** (`encrypt_scope`):
   - 0: None
-
+  - 1-3: Reserved and undefined; implementations encountering these values SHOULD refuse to parse and report an error
   - 4: `resources/` only
-
   - 5: `resources/` and `book_data/`
-
   - 6: `resources/` and `read_data.db`
-
-  - 7: Entire file
-
-- **Key**: Derived via PBKDF2 from user password (RECOMMENDED).
+  - 7: Everything except meta.xml (meta.xml MUST always remain unencrypted; otherwise implementations cannot read the encryption parameters)
+- **Key**: Derived via PBKDF2 (HMAC-SHA-256, at least 100,000 iterations, random salt) from the user password (RECOMMENDED). The salt and a fresh IV per encryption MUST be stored alongside the ciphertext.
+- **Order**: Encryption MUST be applied to the target content BEFORE ZIP compression (encrypted data cannot be compressed effectively).
 
 ### 4.2 Compression Mechanism
 
 - **Target**: Entire `.ex5` file.
-
 - **Algorithm**: ZIP with DEFLATE.
-
 - **Requirement**: Implementations MUST use ZIP compression.
 
 ## 5. Remote Synchronization Protocol
 
 ### 5.1 Synchronization Overview
 
-**Goal**: Synchronize read_data.db across devices.
-
-**Method**: Incremental updates based on timestamps.
+- **Goal**: Synchronize read_data.db across devices.
+- **Method**: Incremental updates based on timestamps.
 
 ### 5.2 RESTful API Definition
 
 #### 5.2.1 GET /sync/read_data
 
 - **Parameters**:
-  - user_id: STRING
-  
+  - user_id: STRING (corresponds to the `identifier` field of the users table)
   - last_sync_time: INTEGER (Unix timestamp)
 
 - **Response**:
@@ -391,9 +384,9 @@ encrypt_scope: Integer (0-7, 7 = full encryption).
 
 ```json
 {
-  "user_id": STRING,
+  "user_id": "STRING (corresponds to the identifier field of the users table)",
   "last_sync_time": INTEGER,
-  "data": OBJECT (matching read_data.db tables)
+  "data": "OBJECT (matching read_data.db tables)"
 }
 ```
 
@@ -408,8 +401,7 @@ encrypt_scope: Integer (0-7, 7 = full encryption).
 
 ### 5.3 Conflict Resolution
 
-- **Strategy**: Last-write-wins based on update_time or create_time.
-
+- **Strategy**: Last-write-wins based on update_time or create_time; when timestamps are equal, the record with the larger id wins.
 - **Optional**: Manual conflict resolution by user.
 
 ## 6. Implementation Guidelines
@@ -425,7 +417,7 @@ Implementations MUST:
   
 ### 6.2 Example Implementations
 
-   **Python Example (Reading Notes)**
+**Python Example (Reading Notes)**
 
 ```python
 import zipfile, sqlite3
@@ -435,13 +427,15 @@ conn = sqlite3.connect('temp/read_data.db')
 cursor = conn.cursor()
 cursor.execute("SELECT * FROM notes")
 notes = cursor.fetchall()
+conn.close()
 ```
 
 ## 7. Security Considerations
 
-- **Encryption**: Use strong keys and secure key management.
+- **Encryption**: Use strong keys and secure key management; keys or user passwords MUST NOT be stored in plaintext inside the .ex5 file.
 - **Synchronization**: Use HTTPS for API calls.
 - **Data Validation**: Validate all inputs to prevent injection attacks.
+- **Decompression Safety**: Implementations SHOULD limit the total decompressed size and file count to mitigate ZIP bomb attacks.
 
 ## 8. IANA Considerations
 
@@ -449,12 +443,10 @@ This document does not require IANA action at this time.
 
 ## 9. References
 
-[RFC 2119](https://tools.ietf.org/html/rfc2119 "RFC 2119"): Key words for use in RFCs to Indicate Requirement Levels
+- [RFC 2119](https://tools.ietf.org/html/rfc2119 "RFC 2119"): Key words for use in RFCs to Indicate Requirement Levels
+- [SQLite Documentation](https://sqlite.org/ "SQLite")
+- [ZIP File Format](https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT "ZIP File Format")
 
-[SQLite Documentation](https://sqlite.org/ "SQLite")
-
-[ZIP File Format](https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT "ZIP File Format")
-
-## 10.  Acknowledgments
+## 10. Acknowledgments
 
 Thanks to the EX5 team for feedback and inspiration.

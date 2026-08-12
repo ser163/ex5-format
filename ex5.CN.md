@@ -2,13 +2,13 @@
 
 **网络工作组**
 
-- Harry Liu  
+- Harry Liu
 
-- EX5 团队  
+- EX5 团队
 
 **请求评论**：EX5-001  
 **类别**：信息性  
-**日期**
+**日期**：2025 年 2 月
 
 ## 本备忘录状态
 
@@ -81,10 +81,11 @@
 ### 1.1 目的
 
 .ex5 文件格式旨在为电子书提供一个健壮、可扩展、以用户为中心的全方位解决方案。其目标包括：
-存储多媒体书籍内容（文本、图片、音频、视频）。
-跟踪用户交互（进度、笔记、评分）。
-支持安全加密和压缩。
-通过远程服务器实现跨设备同步。
+
+- 存储多媒体书籍内容（文本、图片、音频、视频）。
+- 跟踪用户交互（进度、笔记、评分）。
+- 支持安全加密和压缩。
+- 通过远程服务器实现跨设备同步。
 
 ### 1.2 范围
 
@@ -101,10 +102,11 @@
 ### 2.1 文件结构
 
 .ex5 文件是一个 ZIP 存档，包含以下内容：
-book_data/：静态书籍元数据和结构。
-resources/：多媒体资源文件。
-read_data.db：用户数据的 SQLite 数据库。
-meta.xml：协议元数据。
+
+- `book_data/`：静态书籍元数据和结构。
+- `resources/`：多媒体资源文件。
+- `read_data.db`：用户数据的 SQLite 数据库。
+- `meta.xml`：协议元数据。
 
 ### 2.2 版本控制
 
@@ -116,9 +118,9 @@ meta.xml：协议元数据。
 
 ### 3.1 容器格式
 
-格式：ZIP 存档（使用 DEFLATED 压缩）。
-扩展名：.ex5。
-要求：实现必须支持 ZIP 的提取和创建。
+- 格式：ZIP 存档（使用 DEFLATED 压缩）。
+- 扩展名：.ex5。
+- 要求：实现必须支持 ZIP 的提取和创建。
 
 ### 3.2 book_data 目录
 
@@ -172,8 +174,10 @@ book_data/ 目录包含三个 JSON 文件：
 ```
 
 约束：
-0-1000 保留给 info.json（0-100 为封面，101-900 保留）。
-901-1001000 用于内容资源。
+
+- 0-100：封面资源（由 info.json 的 cover_id 字段引用）。
+- 101-900：保留，供未来版本使用；实现不得在该区间分配内容资源。
+- 901-1001000：内容资源。
 
 ### 3.3 resources 目录
 
@@ -197,7 +201,7 @@ CREATE TABLE users (
 );
 ```
 
-3.4.2 history 表
+#### 3.4.2 history 表
 
 ```sql
 CREATE TABLE history (
@@ -213,7 +217,9 @@ CREATE TABLE history (
 );
 ```
 
-3.4.3 records 表
+备注：`progress` 以文本形式存储最近一次阅读的进度摘要，推荐使用 JSON 编码的对象（例如 `{"chapter": 3, "offset": 128}`），以便与 records 表中的数值进度区分开。
+
+#### 3.4.3 records 表
 
 ```sql
 CREATE TABLE records (
@@ -232,7 +238,7 @@ CREATE TABLE records (
 );
 ```
 
-3.4.4 notes 表
+#### 3.4.4 notes 表
 
 ```sql
 CREATE TABLE notes (
@@ -255,11 +261,13 @@ CREATE TABLE notes (
 ```
 
 备注：
-content：对于 "txt"，是文本字符串；其他类型为 resource_ids 的 JSON 数组。
-range_start, range_end：划线字符偏移量（可选）。
-original：划线文本（可选）。
 
-3.4.5 inspiration 表
+- content：对于 "txt"，是文本字符串；其他类型为 resource_ids 的 JSON 数组。
+- range_start, range_end：划线字符偏移量（可选）。
+- original：划线文本（可选）。
+- chapter_id：对应 chapters.json 中的章节 index（章节定义在 JSON 中而非数据库内，故无外键约束）。
+
+#### 3.4.5 inspiration 表
 
 ```sql
 CREATE TABLE inspiration (
@@ -278,7 +286,7 @@ CREATE TABLE inspiration (
 );
 ```
 
-3.4.6 reviews 表
+#### 3.4.6 reviews 表
 
 ```sql
 CREATE TABLE reviews (
@@ -291,7 +299,7 @@ CREATE TABLE reviews (
 );
 ```
 
-3.4.7 ratings 表
+#### 3.4.7 ratings 表
 
 ```sql
 CREATE TABLE ratings (
@@ -304,7 +312,7 @@ CREATE TABLE ratings (
 );
 ```
 
-3.5 meta.xml 元数据
+### 3.5 meta.xml 元数据
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -315,40 +323,50 @@ CREATE TABLE ratings (
 </meta>
 ```
 
-version：协议版本（本规范必须为 "1.0"）。
-encryption：加密算法（推荐使用 AES-256）。
-encrypt_scope：整数（0-7，7 表示完全加密）。
+- version：协议版本（本规范必须为 "1.0"）。
+- encryption：加密算法（推荐使用 AES-256）。
+- encrypt_scope：整数（0-7，7 表示除 meta.xml 外的完全加密；取值 1-3 保留未定义）。
+- meta.xml 在任何 encrypt_scope 取值下都必须保持未加密（见 4.1 节）。
 
-1. 加密与压缩
+---
 
-4.1 加密机制
+## 4. 加密与压缩
+
+### 4.1 加密机制
 
 - 目标：resources/、read_data.db 或整个文件。
-- 算法：AES-256（默认）。
-- 范围：
-  0：无加密
-  4：仅 resources/
-  5：resources/ 和 book_data/
-  6：resources/ 和 read_data.db
-  7：整个文件
-- 密钥：推荐通过 PBKDF2 从用户密码派生。
-4.2 压缩机制
+- 算法：AES-256（默认）。推荐使用 GCM 模式以获得密文完整性校验；若使用 CBC 模式，必须附加 HMAC 进行完整性保护。
+- 范围（encrypt_scope）：
+  - 0：无加密
+  - 1-3：保留，未定义；实现遇到这些取值时应当拒绝解析并报错
+  - 4：仅 resources/
+  - 5：resources/ 和 book_data/
+  - 6：resources/ 和 read_data.db
+  - 7：除 meta.xml 外的全部内容（meta.xml 必须始终保持未加密，否则实现无法读取加密参数）
+- 密钥：推荐通过 PBKDF2（HMAC-SHA-256，迭代次数不少于 100,000，使用随机盐）从用户密码派生。盐和每次加密生成的 IV 必须随密文一同存储。
+- 顺序：必须先加密目标内容，再进行 ZIP 压缩（已加密数据无法被有效压缩）。
+
+### 4.2 压缩机制
+
 - 目标：整个 .ex5 文件。
 - 算法：ZIP（使用 DEFLATE）。
 - 要求：实现必须使用 ZIP 压缩。
 
-1. 远程同步协议
-5.1 同步概览
+---
+
+## 5. 远程同步协议
+
+### 5.1 同步概览
 
 - 目标：在多个设备间同步 read_data.db。
 - 方法：基于时间戳的增量更新。
-  
-5.2 RESTful API 定义
 
-5.2.1 GET /sync/read_data
+### 5.2 RESTful API 定义
+
+#### 5.2.1 GET /sync/read_data
 
 - 参数：
-  - user_id：字符串
+  - user_id：字符串（对应 users 表的 identifier 字段）
   - last_sync_time：整数（Unix 时间戳）
 - 响应：
   
@@ -368,13 +386,13 @@ encrypt_scope：整数（0-7，7 表示完全加密）。
 }
 ```
 
-5.2.2 POST /sync/read_data
+#### 5.2.2 POST /sync/read_data
 
 - 请求体：
 
 ```json
 {
-  "user_id": 字符串,
+  "user_id": 字符串 (对应 users 表的 identifier 字段),
   "last_sync_time": 整数,
   "data": 对象（匹配 read_data.db 表结构）
 }
@@ -389,22 +407,29 @@ encrypt_scope：整数（0-7，7 表示完全加密）。
 }
 ```
 
-5.3 冲突解决
+### 5.3 冲突解决
 
-- 策略：基于 update_time 或 create_time 的最后写入获胜。
+- 策略：基于 update_time 或 create_time 的最后写入获胜；时间戳相同时，以记录 id 较大者获胜。
 - 可选：用户手动解决冲突。
 
-1. 实现指南
-6.1 解析和写入 .ex5 文件
+---
+
+## 6. 实现指南
+
+### 6.1 解析和写入 .ex5 文件
+
 实现必须：
 
 - 提取 ZIP 存档。
 - 解析 JSON 和 XML 文件。
 - 访问 SQLite 数据库并验证模式。
 - 按指定方式处理加密。
-6.2 示例实现
-Python 示例（读取笔记）
-python
+
+### 6.2 示例实现
+
+Python 示例（读取笔记）：
+
+```python
 import zipfile, sqlite3
 with zipfile.ZipFile('book.ex5', 'r') as z:
     z.extract('read_data.db', 'temp/')
@@ -412,20 +437,30 @@ conn = sqlite3.connect('temp/read_data.db')
 cursor = conn.cursor()
 cursor.execute("SELECT * FROM notes")
 notes = cursor.fetchall()
+conn.close()
+```
 
-1. 安全考虑
+---
 
-- 加密：使用强密钥和安全密钥管理。
+## 7. 安全考虑
+
+- 加密：使用强密钥和安全密钥管理；不得将密钥或用户密码明文写入 .ex5 文件。
 - 同步：API 调用使用 HTTPS。
 - 数据验证：验证所有输入以防注入攻击。
+- 解压安全：实现应当限制解压后的总大小和文件数量，以防范 ZIP 炸弹攻击。
 
-1. IANA 考虑
+---
+
+## 8. IANA 考虑
+
 本文档目前无需 IANA 操作。
-1. 参考文献
+
+## 9. 参考文献
 
 - RFC 2119：RFC 中用于指示要求级别的关键词
 - SQLite 文档：<https://sqlite.org/>
 - ZIP 文件格式：<https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT>
 
-1. 致谢
+## 10. 致谢
+
 感谢 EX5 团队提供的反馈和灵感。

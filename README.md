@@ -73,7 +73,10 @@ def create_ex5(filepath, info, chapters, resources, db_data):
         cursor.execute("CREATE TABLE notes (id INTEGER PRIMARY KEY, content TEXT, type TEXT, create_time INTEGER, user_id INTEGER, range_start INTEGER, range_end INTEGER, original TEXT)")
         cursor.executemany("INSERT INTO notes (content, type, create_time, user_id, range_start, range_end, original) VALUES (?, ?, ?, ?, ?, ?, ?)", db_data)
         conn.commit()
-        conn.backup(open('temp.db', 'wb'))
+        dest = sqlite3.connect('temp.db')
+        conn.backup(dest)
+        dest.close()
+        conn.close()
         z.write('temp.db', 'read_data.db')
         
         z.writestr('meta.xml', '<?xml version="1.0" encoding="UTF-8"?><meta><version>1.0</version><encryption>AES-256</encryption><encrypt_scope>7</encrypt_scope></meta>')
@@ -84,7 +87,7 @@ def create_ex5(filepath, info, chapters, resources, db_data):
 ```python
 info = {"title": "Sample Book", "authors": ["Author A"]}
 chapters = [{"index": 1, "title": "Chapter 1", "resource_ids": [901]}]
-resources = [{"resource_id": 901, "content": "chapter1.txt", "type": "txt", "resType": null}]
+resources = [{"resource_id": 901, "content": "chapter1.txt", "type": "txt", "resType": None}]
 db_data = [("Sample note", "txt", 1609462800, 1, 10, 20, "Sample highlight")]
 create_ex5('example.ex5', info, chapters, resources, db_data)
 ```
