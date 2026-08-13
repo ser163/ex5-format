@@ -115,6 +115,29 @@ Version 1.1 adds multi-user shared annotations: when the file is not encrypted (
 
 For the full protocol specification, see RFC EX5-001 (docs/rfc-ex5-001.txt).
 
+Reference Implementation
+
+The `ex5/` package is a reference implementation of spec v1.1 (unencrypted files):
+
+```python
+from ex5 import Ex5
+
+# Create a book and add multi-user annotations
+book = Ex5.create('example.ex5', info, chapters, resources, resource_files)
+book.add_user('alice@example.com', name='Alice')
+book.add_user('bob@example.com', name='Bob')
+book.add_note('alice@example.com', content='A note', chapter_id=1)
+book.save()
+
+# Shared reading: bob sees alice's note; only alice can edit it
+with Ex5('example.ex5') as book:
+    for note in book.annotations('notes', current_user='bob@example.com'):
+        print(note['author_name'], note['content'], 'editable:', note['editable'])
+    book.merge('other_copy.ex5')  # merge by identifier + uuid, LWW
+```
+
+Run the test suite with `python tests/test_ex5.py`.
+
 Contributing
 
 We welcome contributions, bug reports, and feature suggestions! 

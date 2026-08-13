@@ -116,6 +116,29 @@ create_ex5('example.ex5', info, chapters, resources, db_data)
 1.1 版新增多人共享批注：当文件未加密（encrypt_scope = 0）时，批注、摘抄、心得、划线、评价和评分对任何持有该文件的用户可读，仅原作者可编辑。
 
 完整的协议规范见 RFC EX5-001 (docs/rfc-ex5-001.txt)。
+参考实现
+
+`ex5/` 包是 1.1 版规范的参考实现（支持未加密文件）：
+
+```python
+from ex5 import Ex5
+
+# 创建书籍并添加多用户批注
+book = Ex5.create('example.ex5', info, chapters, resources, resource_files)
+book.add_user('alice@example.com', name='Alice')
+book.add_user('bob@example.com', name='Bob')
+book.add_note('alice@example.com', content='一条批注', chapter_id=1)
+book.save()
+
+# 共享读取：bob 能看到 alice 的批注，但只有 alice 可以编辑
+with Ex5('example.ex5') as book:
+    for note in book.annotations('notes', current_user='bob@example.com'):
+        print(note['author_name'], note['content'], '可编辑:', note['editable'])
+    book.merge('other_copy.ex5')  # 按 identifier + uuid 合并，最后写入获胜
+```
+
+运行测试：`python tests/test_ex5.py`。
+
 贡献
 欢迎贡献代码、提交问题或提出建议！请遵循以下步骤：
 Fork 本仓库。
