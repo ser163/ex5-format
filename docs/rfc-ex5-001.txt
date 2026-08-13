@@ -1,8 +1,9 @@
 Network Working Group                                          Harry Liu
 Request for Comments: EX5-001                                  EX5 Team
 Category: Informational                                     February 2025
+                                             (revised for Version 1.1)
 
-            .ex5 File Format Specification, Version 1.0
+            .ex5 File Format Specification, Version 1.1
 
 Status of This Memo
 
@@ -15,10 +16,14 @@ Abstract
    The .ex5 file format is a novel electronic book container designed to
    encapsulate book content, multimedia resources, and user interaction
    data such as reading progress, notes, and ratings. This specification
-   defines Version 1.0 of the .ex5 format, leveraging ZIP archives, JSON,
+   defines Version 1.1 of the .ex5 format, leveraging ZIP archives, JSON,
    SQLite, and XML to enable secure storage, rich functionality, and
-   remote synchronization. This document provides a detailed protocol
-   for developers to implement .ex5-compliant applications.
+   remote synchronization. Version 1.1 adds multi-user shared
+   annotations: in unencrypted files, notes, excerpts, inspirations,
+   highlights, reviews, and ratings are readable by everyone holding the
+   file, while only the original author may edit them. This document
+   provides a detailed protocol for developers to implement
+   .ex5-compliant applications.
 
 Table of Contents
 
@@ -42,6 +47,7 @@ Table of Contents
       5.1 Synchronization Overview
       5.2 RESTful API Definition
       5.3 Conflict Resolution
+      5.4 Shared Annotations and Permissions
    6. Implementation Guidelines
       6.1 Parsing and Writing .ex5 Files
       6.2 Example Implementations
@@ -60,10 +66,12 @@ Table of Contents
    - Track user interactions (progress, notes, ratings).
    - Support secure encryption and compression.
    - Enable synchronization across devices via a remote server.
+   - Support multi-user sharing of notes, excerpts, inspirations,
+     highlights, reviews, and ratings (unencrypted files only).
 
 1.2 Scope
 
-   This document defines Version 1.0 of the .ex5 protocol, covering file
+   This document defines Version 1.1 of the .ex5 protocol, covering file
    structure, data schemas, encryption, and synchronization mechanisms.
    Future versions may extend this specification.
 
@@ -85,9 +93,20 @@ Table of Contents
 
 2.2 Versioning
 
-   This specification defines Version 1.0. The version is indicated in
+   This specification defines Version 1.1. The version is indicated in
    the meta.xml file. Future revisions will increment the version number
-   (e.g., 1.1, 2.0) and document changes explicitly.
+   (e.g., 1.2, 2.0) and document changes explicitly.
+
+   Changes from Version 1.0 to 1.1:
+   - Added a multi-user shared-annotation and permission model
+     (Section 5.4): in unencrypted files, every user's notes, excerpts,
+     inspirations, highlights, reviews, and ratings are readable by all,
+     and editable only by their original author.
+   - Added a uuid column to the notes, inspiration, reviews, and ratings
+     tables for deduplication during cross-user and cross-device merges.
+   - Clarified resource ID ranges, reserved encrypt_scope values,
+     encryption algorithm details, and the plaintext requirement for
+     meta.xml.
 
 3. File Format Specification
 
@@ -152,7 +171,11 @@ Table of Contents
 
 3.4 read_data.db SQLite Database
 
-   A SQLite database with the following tables:
+   A SQLite database with the following tables. read_data.db natively
+   supports multiple users via the users table: annotations,
+   inspirations, reviews, and other data from several users of the same
+   book coexist in one database; sharing semantics are defined in
+   Section 5.4.
 
 3.4.1 users Table
    CREATE TABLE users (
@@ -201,6 +224,7 @@ Table of Contents
 3.4.4 notes Table
    CREATE TABLE notes (
        id INTEGER PRIMARY KEY AUTOINCREMENT,
+       uuid TEXT UNIQUE,
        content TEXT,
        type TEXT NOT NULL CHECK (type IN ('txt', 'image', 'html', 'video', 'sound', 'binary')),
        create_time INTEGER NOT NULL,
@@ -223,11 +247,19 @@ Table of Contents
      - chapter_id: Corresponds to the chapter index in chapters.json
        (chapters are defined in JSON, not in the database, hence no
        foreign key).
+     - uuid: Globally unique record identifier (UUID v4 RECOMMENDED),
+       generated at creation; used for deduplication and conflict
+       resolution in cross-user and cross-device merges (see
+       Section 5.4).
+     - Feature mapping: a note is a record with content; an excerpt is a
+       record with original and range_start/range_end; a highlight is a
+       record with only range_start/range_end and no content.
 
 3.4.5 inspiration Table
 
    CREATE TABLE inspiration (
        id INTEGER PRIMARY KEY AUTOINCREMENT,
+       uuid TEXT UNIQUE,
        type TEXT NOT NULL CHECK (type IN ('txt', 'image', 'html', 'video', 'sound', 'binary')),
        content TEXT,
        create_time INTEGER NOT NULL,
@@ -240,10 +272,13 @@ Table of Contents
        FOREIGN KEY (history_id) REFERENCES history(id),
        FOREIGN KEY (records_id) REFERENCES records(id)
    );
+   - Note: The uuid field has the same semantics as in the notes table.
+     Inspirations correspond to rows of the inspiration table.
 
 3.4.6 reviews Table
    CREATE TABLE reviews (
        id INTEGER PRIMARY KEY AUTOINCREMENT,
+       uuid TEXT UNIQUE,
        content TEXT NOT NULL,
        user_id INTEGER NOT NULL,
        create_time INTEGER NOT NULL,
@@ -254,6 +289,7 @@ Table of Contents
 3.4.7 ratings Table
    CREATE TABLE ratings (
        id INTEGER PRIMARY KEY AUTOINCREMENT,
+       uuid TEXT UNIQUE,
        user_id INTEGER NOT NULL,
        rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
        create_time INTEGER NOT NULL,
@@ -265,14 +301,15 @@ Table of Contents
 
    <?xml version="1.0" encoding="UTF-8"?>
    <meta>
-     <version>1.0</version>
+     <version>1.1</version>
      <encryption>AES-256</encryption>
      <encrypt_scope>7</encrypt_scope>
    </meta>
-   - version: Protocol version (MUST be "1.0" for this spec).
+   - version: Protocol version (MUST be "1.1" for this spec).
    - encryption: Encryption algorithm (RECOMMENDED: AES-256).
    - encrypt_scope: Integer (0-7; 7 = full encryption of everything
-     except meta.xml; values 1-3 are reserved and undefined).
+     except meta.xml; values 1-3 are reserved and undefined). Shared
+     annotations require this value to be 0 (see Section 5.4).
    - meta.xml MUST remain unencrypted under every encrypt_scope value
      (see Section 4.1).
 
@@ -334,6 +371,10 @@ Table of Contents
        },
        "timestamp": INTEGER
      }
+   - Note: For unencrypted files, the response SHOULD include the notes,
+     inspiration, reviews, and ratings of ALL users of the book (shared
+     reading, see Section 5.4); private reading data such as history and
+     records MUST still be limited to the requesting user.
 
 5.2.2 POST /sync/read_data
    - Request Body:
@@ -348,12 +389,44 @@ Table of Contents
        "status": "success",
        "timestamp": INTEGER
      }
+   - Note: The server MUST apply changes only to records belonging to
+     the requesting user (user_id); modifications or deletions targeting
+     other users' records MUST be rejected (see Section 5.4).
 
 5.3 Conflict Resolution
 
    - Strategy: Last-write-wins based on update_time or create_time;
      when timestamps are equal, the record with the larger id wins.
    - Optional: Manual conflict resolution by user.
+
+5.4 Shared Annotations and Permissions
+
+   Notes, excerpts, inspirations, highlights, reviews, and ratings are
+   content about this book and are naturally shared along with the .ex5
+   file. The rules are:
+
+   - Precondition: Sharing takes effect only when encrypt_scope in
+     meta.xml is 0 (unencrypted). For encrypted files, implementations
+     MUST display only the current user's own data.
+   - Shared reading: In an unencrypted file, implementations MUST allow
+     any user to read the notes, inspiration, reviews, and ratings of
+     ALL users in read_data.db; when displaying them, the author's name
+     SHOULD be resolved by joining user_id to the users table.
+   - Edit permission: Only the original author may modify or delete
+     their own records. Implementations MUST determine authorship by
+     matching the currently logged-in user's identifier against the
+     record's owning users.identifier, and MUST reject any edit
+     targeting another user's records; the server enforces the same
+     check in Section 5.2.2.
+   - Multi-user merge: When copies of the same book circulate among
+     users or are merged by a server, users are matched by
+     users.identifier and records by uuid; records with the same uuid
+     but different content are resolved by last-write-wins on
+     update_time. Local autoincrement ids are valid only within one
+     database and SHOULD be reassigned during merges.
+   - Private data: history and records are personal reading-behavior
+     data; they are not part of shared display and are used only for
+     the owner's multi-device synchronization.
 
 6. Implementation Guidelines
 
@@ -364,6 +437,9 @@ Table of Contents
    - Parse JSON and XML files.
    - Access SQLite database with schema validation.
    - Handle encryption as specified.
+   - Display notes, inspirations, reviews, and ratings of other users
+     (identifier different from the current user) as read-only, with no
+     editing entry point.
 
 6.2 Example Implementations
 
@@ -386,6 +462,14 @@ Table of Contents
    - Data Validation: Validate all inputs to prevent injection attacks.
    - Decompression Safety: Implementations SHOULD limit the total
      decompressed size and file count to mitigate ZIP bomb attacks.
+   - Sharing Privacy: In an unencrypted file, all notes, inspirations,
+     reviews, and ratings are visible to anyone holding the file;
+     implementations SHOULD clearly inform users of this when they
+     create such content. Users needing privacy SHOULD enable
+     encryption.
+   - Identity Verification: The server MUST authenticate the requester
+     via tokens to prevent forging an identifier to impersonate another
+     user when publishing or modifying content.
 
 8. IANA Considerations
 
